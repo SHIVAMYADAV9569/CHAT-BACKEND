@@ -22,9 +22,9 @@ catch (error) {
     console.log(error);
 }
 
-app.get("/" , () => {
+app.get("/" , (req , res) => {
   res.send("hello world");
-})
+});
 app.use("/api/user", userRoute);
 app.use("/api/message", messageRoute);
 
