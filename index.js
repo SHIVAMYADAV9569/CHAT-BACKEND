@@ -22,19 +22,22 @@ catch (error) {
     console.log(error);
 }
 
+app.get("/" , () => {
+  res.send("hello world");
+})
 app.use("/api/user", userRoute);
 app.use("/api/message", messageRoute);
 
 
 //...........code for deployment
 
-if (process.env.MODE_ENV ==='prodution'){
-  const dirPath = path.resolv();
-  app.use(express.static("./Frontend/dist"));
-  app.get('*',(req,res) => {
-    res.sendFile(path.resolve(dirPath,'./Frontend/dist','index.html'));
-  });
-}
+// if (process.env.MODE_ENV ==='prodution'){
+//   const dirPath = path.resolv();
+//   app.use(express.static("./Frontend/dist"));
+//   app.get('*',(req,res) => {
+//     res.sendFile(path.resolve(dirPath,'./Frontend/dist','index.html'));
+//   });
+// }
 
 server.listen(PORT, () => {
   console.log(`Server is Running on port ${PORT}`);
