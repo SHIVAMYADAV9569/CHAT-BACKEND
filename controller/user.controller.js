@@ -28,10 +28,11 @@ export const signup = async (req, res) => {
         await newUser.save();
 
         // Generate token and set cookie
-        createTokenAndSaveCookie(newUser._id, res);
+        const token = createTokenAndSaveCookie(newUser._id, res);
 
         res.status(201).json({
             message: "User registered successfully",
+            token,
             user: {
                 _id: newUser._id,
                 name: newUser.name,
@@ -59,10 +60,11 @@ export const login = async (req, res) => {
             return res.status(400).json({ message: "Invalid email or password" });
         }
 
-        createTokenAndSaveCookie(user._id, res);
+        const token = createTokenAndSaveCookie(user._id, res);
 
         res.status(200).json({
             message: "User logged in successfully",
+            token,
             user: {
                 _id: user._id,
                 name: user.name,

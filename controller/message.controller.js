@@ -1,7 +1,7 @@
 import Conversation from "../models/conversation.model.js";
 import Message from "../models/message.model.js";
 import mongoose from "mongoose";
-import { getReceiverSocketId } from "../SocketIO/server.js";
+import { getReceiverSocketId, io } from "../SocketIO/server.js";
 
 export const sendMessage = async (req, res) => {
   try {
@@ -35,9 +35,11 @@ export const sendMessage = async (req, res) => {
 
     // dono ko save karo
     await Promise.all([conversation.save(), newMessage.save()]);
-    const receiversocketId =getReceiverSocketId(receiverId);
-    if(receiversocketId){
-      io.to(receiversocketId).emit("newMessage",newMessage);
+    const receiversocketIds = getReceiverSocketId(receiverId);
+    if (receiversocketIds.length > 0) {
+        receiversocketIds.forEach(socketId => {
+            io.to(socketId).emit("newMessage", newMessage);
+        });
     }
 
     return res
