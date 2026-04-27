@@ -16,6 +16,7 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "http://localhost:4001",
   "http://127.0.0.1:4001",
+  "https://chat-frontend-ten-kappa.vercel.app"
 ];
 app.use(
   cors({
