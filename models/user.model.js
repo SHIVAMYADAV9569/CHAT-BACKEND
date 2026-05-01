@@ -10,6 +10,7 @@ const statusSchema = new mongoose.Schema(
     text: { type: String, default: "" },
     mediaUrl: { type: String, default: "" },
     postedAt: { type: Date, default: null },
+    expiryAt: { type: Date, default: null },
     viewers: [
       {
         userId: {

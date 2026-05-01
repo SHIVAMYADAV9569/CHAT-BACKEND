@@ -1,8 +1,69 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import bcrypt from "bcryptjs";
+import path from "path";
+import fs from "fs";
 import createTokenAndSaveCookie from "../jwt/generateToken.js";
 import { emitUserUpdate } from "../SocketIO/server.js";
+import cloudinary from "../cloudinaryConfig.js";
+
+const STATUS_TTL_MS = 24 * 60 * 60 * 1000;
+
+const buildEmptyStatus = () => ({
+  type: "text",
+  text: "",
+  mediaUrl: "",
+  postedAt: null,
+  expiryAt: null,
+  viewers: [],
+  likes: [],
+});
+
+const getLocalUploadPath = (mediaUrl) => {
+  if (!mediaUrl) return null;
+  const uploadsSegment = "/uploads/";
+  const index = mediaUrl.indexOf(uploadsSegment);
+  if (index === -1) return null;
+  const fileName = mediaUrl.substring(index + uploadsSegment.length);
+  return path.resolve("uploads", fileName);
+};
+
+const removeLocalUploadFile = (mediaUrl) => {
+  const filePath = getLocalUploadPath(mediaUrl);
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.error("Failed to remove local upload file:", error);
+  }
+};
+
+const clearExpiredStatusForUser = async (user) => {
+  if (!user?.status?.postedAt || !user.status.expiryAt) return false;
+  const now = new Date();
+  if (new Date(user.status.expiryAt) <= now) {
+    removeLocalUploadFile(user.status.mediaUrl);
+    user.status = buildEmptyStatus();
+    await user.save();
+    return true;
+  }
+  return false;
+};
+
+const clearAllExpiredStatuses = async () => {
+  const now = new Date();
+  const expiredUsers = await User.find({
+    "status.expiryAt": { $lte: now },
+  });
+
+  for (const expiredUser of expiredUsers) {
+    removeLocalUploadFile(expiredUser.status.mediaUrl);
+    expiredUser.status = buildEmptyStatus();
+    await expiredUser.save();
+  }
+};
 
 //Signup Controller
 export const signup = async (req, res) => {
@@ -101,6 +162,7 @@ export const logout = (req, res) => {
 export const getUserProfile = async (req, res) => {
   try {
     const loggedInUser = req.user._id;
+    await clearAllExpiredStatuses();
     const unreadCounts = await Message.aggregate([
       {
         $match: {
@@ -146,8 +208,18 @@ export const updateProfile = async (req, res) => {
     if (avatarUrl) update.avatarUrl = avatarUrl;
     if (name) update.name = name;
     if (req.file) {
-      const baseUrl = process.env.SERVER_URL || "http://localhost:5001";
-      update.avatarUrl = `${baseUrl}/uploads/${req.file.filename}`;
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "chat-app/profile-pics",
+        resource_type: "image",
+      });
+      if (result?.secure_url) {
+        update.avatarUrl = result.secure_url;
+      }
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (err) {
+        console.error("Failed to delete temporary upload file:", err);
+      }
     }
 
     const user = await User.findByIdAndUpdate(loggedInUser, update, {
@@ -180,6 +252,7 @@ export const postStatus = async (req, res) => {
       text: text || "",
       mediaUrl: finalMediaUrl,
       postedAt: new Date(),
+      expiryAt: new Date(Date.now() + STATUS_TTL_MS),
       viewers: [],
       likes: [],
     };
@@ -210,6 +283,10 @@ export const likeStatus = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    if (await clearExpiredStatusForUser(targetUser)) {
+      return res.status(404).json({ message: "Status expired" });
+    }
+
     const userLiked = targetUser.status.likes.some((item) =>
       item.userId.equals(loggedInUser)
     );
@@ -237,6 +314,10 @@ export const viewStatus = async (req, res) => {
     const targetUser = await User.findById(userId);
     if (!targetUser) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    if (await clearExpiredStatusForUser(targetUser)) {
+      return res.status(404).json({ message: "Status expired" });
     }
 
     const alreadyViewed = targetUser.status.viewers.some((item) =>
