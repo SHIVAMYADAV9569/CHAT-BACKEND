@@ -27,6 +27,7 @@ export const sendMessage = async (req, res) => {
     const newMessage = new Message({
       senderId,
       receiverId,
+      conversationId: conversation._id,
       message,
     });
 
@@ -35,12 +36,22 @@ export const sendMessage = async (req, res) => {
 
     // dono ko save karo
     await Promise.all([conversation.save(), newMessage.save()]);
-    const receiversocketIds = getReceiverSocketId(receiverId);
-    if (receiversocketIds.length > 0) {
-        receiversocketIds.forEach(socketId => {
-            io.to(socketId).emit("newMessage", newMessage);
-        });
-    }
+
+    console.log(`📤 SENDING message from ${senderId} to ${receiverId}:`, newMessage.message);
+    console.log(`Message object:`, {
+        _id: newMessage._id,
+        senderId: newMessage.senderId,
+        receiverId: newMessage.receiverId,
+        message: newMessage.message
+    });
+
+    // Emit to receiver's user ID room (not individual socket ID)
+    io.to(receiverId.toString()).emit("newMessage", newMessage);
+    console.log(`🚀 Message emitted to room: ${receiverId}`);
+
+    // Also emit to sender's room for consistency (optional)
+    io.to(senderId.toString()).emit("newMessage", newMessage);
+    console.log(`🚀 Message also emitted to sender's room: ${senderId}`);
 
     return res
       .status(201)
@@ -67,10 +78,20 @@ export const getMessage = async (req, res) => {
     }).populate("messages");
 
     if (!conversation) {
-      return res.status(200).json({message: "No conversation found"} );
+      return res.status(200).json({ message: "No conversation found" });
     }
 
-    res.status(200).json({messages: conversation.messages });
+    // Mark messages as read for this conversation when current user views it
+    await Message.updateMany(
+      {
+        conversationId: conversation._id,
+        receiverId: senderId,
+        isRead: false,
+      },
+      { isRead: true }
+    );
+
+    res.status(200).json({ messages: conversation.messages });
   } catch (error) {
     console.log("Message getting error ", error);
     res.status(500).json({ error: "Internal server error" });
